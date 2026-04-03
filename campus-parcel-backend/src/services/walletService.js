@@ -5,10 +5,9 @@ const { AppError } = require('../middleware/errorHandler');
 
 /**
  * Deduct tokens from user (when creating a request).
- * Called inside a Mongoose session for atomicity.
  */
-const deductTokens = async (userId, amount, requestId, description, session) => {
-  const user = await User.findById(userId).session(session);
+const deductTokens = async (userId, amount, requestId, description) => {
+  const user = await User.findById(userId);
   if (!user) throw new AppError('User not found.', 404);
 
   if (user.tokenBalance < amount) {
@@ -16,7 +15,7 @@ const deductTokens = async (userId, amount, requestId, description, session) => 
   }
 
   user.tokenBalance -= amount;
-  await user.save({ session });
+  await user.save();
 
   const tx = await Transaction.create(
     [
@@ -28,8 +27,7 @@ const deductTokens = async (userId, amount, requestId, description, session) => 
         description: description || `Spent ${amount} tokens for delivery request`,
         balanceAfter: user.tokenBalance,
       },
-    ],
-    { session }
+    ]
   );
 
   return { newBalance: user.tokenBalance, transaction: tx[0] };
@@ -38,12 +36,12 @@ const deductTokens = async (userId, amount, requestId, description, session) => 
 /**
  * Credit tokens to user (when delivery is completed).
  */
-const creditTokens = async (userId, amount, requestId, description, session) => {
-  const user = await User.findById(userId).session(session);
+const creditTokens = async (userId, amount, requestId, description) => {
+  const user = await User.findById(userId);
   if (!user) throw new AppError('User not found.', 404);
 
   user.tokenBalance += amount;
-  await user.save({ session });
+  await user.save();
 
   const tx = await Transaction.create(
     [
@@ -55,8 +53,7 @@ const creditTokens = async (userId, amount, requestId, description, session) => 
         description: description || `Earned ${amount} tokens for delivery`,
         balanceAfter: user.tokenBalance,
       },
-    ],
-    { session }
+    ]
   );
 
   return { newBalance: user.tokenBalance, transaction: tx[0] };
@@ -65,12 +62,12 @@ const creditTokens = async (userId, amount, requestId, description, session) => 
 /**
  * Refund tokens to sender (when request is cancelled after acceptance).
  */
-const refundTokens = async (userId, amount, requestId, description, session) => {
-  const user = await User.findById(userId).session(session);
+const refundTokens = async (userId, amount, requestId, description) => {
+  const user = await User.findById(userId);
   if (!user) throw new AppError('User not found.', 404);
 
   user.tokenBalance += amount;
-  await user.save({ session });
+  await user.save();
 
   const tx = await Transaction.create(
     [
@@ -82,8 +79,7 @@ const refundTokens = async (userId, amount, requestId, description, session) => 
         description: description || `Refund of ${amount} tokens`,
         balanceAfter: user.tokenBalance,
       },
-    ],
-    { session }
+    ]
   );
 
   return { newBalance: user.tokenBalance, transaction: tx[0] };

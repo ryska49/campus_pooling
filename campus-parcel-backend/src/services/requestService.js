@@ -9,32 +9,25 @@ const { emitToAll, emitToUser, EVENTS } = require('../config/socket');
 const createRequest = async (senderId, requestData) => {
   const { pickupLocation, dropLocation, parcelDetails, tokenReward } = requestData;
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     // Deduct tokens from sender upfront (escrow)
     await deductTokens(
       senderId,
       tokenReward,
       null, // requestId not yet created
-      `Escrowed ${tokenReward} tokens for delivery request`,
-      session
+      `Escrowed ${tokenReward} tokens for delivery request`
     );
 
     const [request] = await DeliveryRequest.create(
-      [{ senderId, pickupLocation, dropLocation, parcelDetails, tokenReward }],
-      { session }
+      [{ senderId, pickupLocation, dropLocation, parcelDetails, tokenReward }]
     );
 
     // Update transaction with actual requestId
     await mongoose.model('Transaction').findOneAndUpdate(
       { userId: senderId, requestId: null },
       { requestId: request._id },
-      { session, sort: { createdAt: -1 } }
+      { sort: { createdAt: -1 } }
     );
-
-    await session.commitTransaction();
 
     // Emit real-time event to all connected clients
     emitToAll(EVENTS.NEW_REQUEST, {
@@ -48,10 +41,7 @@ const createRequest = async (senderId, requestData) => {
 
     return request;
   } catch (error) {
-    await session.abortTransaction();
     throw error;
-  } finally {
-    session.endSession();
   }
 };
 
@@ -135,11 +125,8 @@ const generateOTPForRequest = async (requestId, senderId) => {
 };
 
 const completeDelivery = async (requestId, carrierId, providedOTP) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    const request = await DeliveryRequest.findById(requestId).session(session);
+    const request = await DeliveryRequest.findById(requestId);
     if (!request) throw new AppError('Delivery request not found.', 404);
     if (request.carrierId?.toString() !== carrierId.toString()) {
       throw new AppError('Only the assigned carrier can complete this delivery.', 403);
@@ -157,16 +144,13 @@ const completeDelivery = async (requestId, carrierId, providedOTP) => {
       carrierId,
       request.tokenReward,
       requestId,
-      `Earned ${request.tokenReward} tokens for delivering parcel`,
-      session
+      `Earned ${request.tokenReward} tokens for delivering parcel`
     );
 
     request.status = REQUEST_STATUS.COMPLETED;
     request.completedAt = new Date();
     request.otp = { code: null, generatedAt: null, expiresAt: null }; // Clear OTP
-    await request.save({ session });
-
-    await session.commitTransaction();
+    await request.save();
 
     // Notify both parties
     emitToUser(request.senderId.toString(), EVENTS.DELIVERY_COMPLETED, { requestId });
@@ -174,19 +158,13 @@ const completeDelivery = async (requestId, carrierId, providedOTP) => {
 
     return request;
   } catch (error) {
-    await session.abortTransaction();
     throw error;
-  } finally {
-    session.endSession();
   }
 };
 
 const cancelRequest = async (requestId, userId) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    const request = await DeliveryRequest.findById(requestId).session(session);
+    const request = await DeliveryRequest.findById(requestId);
     if (!request) throw new AppError('Delivery request not found.', 404);
     if (request.senderId.toString() !== userId.toString()) {
       throw new AppError('Only the sender can cancel this request.', 403);
@@ -201,22 +179,17 @@ const cancelRequest = async (requestId, userId) => {
         userId,
         request.tokenReward,
         requestId,
-        `Refund for cancelled delivery request`,
-        session
+        `Refund for cancelled delivery request`
       );
     }
 
     request.status = REQUEST_STATUS.CANCELLED;
     request.cancelledAt = new Date();
-    await request.save({ session });
+    await request.save();
 
-    await session.commitTransaction();
     return request;
   } catch (error) {
-    await session.abortTransaction();
     throw error;
-  } finally {
-    session.endSession();
   }
 };
 

@@ -17,7 +17,7 @@ const {
 } = require('../middleware/validators');
 
 // All request routes require authentication
-router.use(protect);
+router.use(protect); 
 
 /**
  * @route   POST /api/requests

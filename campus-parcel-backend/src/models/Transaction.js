@@ -17,7 +17,7 @@ const transactionSchema = new mongoose.Schema(
     requestId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'DeliveryRequest',
-      required: [true, 'Request ID is required'],
+      required: false, // Can be null initially, updated later
     },
     type: {
       type: String,
